@@ -47,6 +47,14 @@ pnpm-debug.log*
 *.tmp
 *.temp
 
+# Credentials/secrets
+*.pem
+*.key
+*.p12
+*.pfx
+*service-account*.json
+gcloud-service-key.json
+
 # IDE/editor
 .vscode/
 .idea/

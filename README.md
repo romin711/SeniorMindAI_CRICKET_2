@@ -7,7 +7,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://reactjs.org/)
 [![Express](https://img.shields.io/badge/Express-4-000000?style=flat-square&logo=express&logoColor=white)](https://expressjs.com/)
-[![Google Gemini](https://img.shields.io/badge/Google%20Gemini-2.0%20Flash-4285F4?style=flat-square&logo=google&logoColor=white)](https://aistudio.google.com/)
+[![Google Gemini](https://img.shields.io/badge/Google%20Gemini-2.5%20Flash-4285F4?style=flat-square&logo=google&logoColor=white)](https://aistudio.google.com/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Cloud Run](https://img.shields.io/badge/Google%20Cloud%20Run-Deployed-4285F4?style=flat-square&logo=googlecloud&logoColor=white)](https://cloud.google.com/run)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
@@ -108,7 +108,7 @@ GDG_CRICKET_1/
                      │
           ┌──────────▼───────────┐
           │   Google Gemini API  │
-          │  (gemini-2.0-flash)  │
+          │  (gemini-2.5-flash)  │
           └──────────────────────┘
 ```
 
@@ -180,7 +180,7 @@ Edit `backend/.env`:
 
 ```env
 GEMINI_API_KEY=your_api_key_here   # Required — your Gemini API key
-GEMINI_MODEL=gemini-2.0-flash      # Model name (default: gemini-2.0-flash)
+GEMINI_MODEL=gemini-2.5-flash      # Recommended default model
 PORT=3001                          # Port the Express server listens on
 ```
 
@@ -250,7 +250,8 @@ Generate a structured engineering response from Gemini.
 
 ```json
 {
-  "result": "## 🔍 Problem Breakdown\n..."
+  "result": "## 🔍 Problem Breakdown\n...",
+  "modelUsed": "gemini-2.5-flash"
 }
 ```
 
@@ -260,7 +261,7 @@ Generate a structured engineering response from Gemini.
 |---|---|
 | `400` | `{ "error": "Missing required fields: query, mode, scale" }` |
 | `500` | `{ "error": "GEMINI_API_KEY is not configured on the server." }` |
-| `500` | `{ "error": "Failed to generate response with model gemini-2.0-flash. ..." }` |
+| `500` | `{ "error": "Failed to generate response with available Gemini models.", "details": [...] }` |
 
 **Structured response sections returned by Gemini:**
 
@@ -354,16 +355,29 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
+You can override defaults without editing the script:
+
+```bash
+PROJECT_ID=your-gcp-project \
+REGION=us-central1 \
+BACKEND_SERVICE=seniormind-backend \
+FRONTEND_SERVICE=seniormind-frontend \
+GEMINI_MODEL=gemini-2.5-flash \
+./deploy.sh
+```
+
 **What the script does:**
 
 1. Submits the backend Docker image to **Google Cloud Build** and pushes it to **Container Registry** (`gcr.io/<project>/seniormind-backend`).
-2. Deploys the backend image to **Cloud Run** in `us-central1` with `GEMINI_MODEL=gemini-2.0-flash` set as an environment variable.
+2. Deploys the backend image to **Cloud Run** (default region: `us-central1`) with `GEMINI_MODEL` set as an environment variable.
 3. Captures the live backend URL and passes it as `REACT_APP_API_BASE_URL` to the frontend Cloud Build step.
 4. Submits the frontend image to Cloud Build using `frontend/cloudbuild.yaml`, baking the backend URL into the React bundle.
 5. Deploys the frontend image to **Cloud Run** on port `8080`.
 6. Prints the live frontend URL.
 
 > ⚠️ **Secret management:** After deploying, set `GEMINI_API_KEY` as a Cloud Run secret or environment variable via the console or `gcloud run services update` — do **not** commit it to source code.
+
+> ℹ️ `deploy.sh` fails fast if `gcloud config get-value project` is not configured and no `PROJECT_ID` override is provided.
 
 ### Cloud Build pipeline (`frontend/cloudbuild.yaml`)
 
@@ -398,7 +412,7 @@ server {
 | Section | Description |
 |---|---|
 | `buildPrompt()` | Constructs the full Gemini prompt from `query`, `mode`, `scale`, and optional `userArchitecture`. Selects the scale context string, inserts the mode-specific instruction block, and appends a strict response-format template. |
-| `POST /generate` | Validates required fields → instantiates Gemini model → calls `generateContent()` → returns `{ result }`. |
+| `POST /generate` | Validates required fields → builds prompt → tries candidate Gemini models (`GEMINI_MODEL` + fallbacks) → returns `{ result, modelUsed }`. |
 | `GET /health` | Returns `{ status: "ok" }` for load-balancer / readiness checks. |
 
 ### `frontend/src/App.js`
@@ -450,7 +464,8 @@ All styles are defined using **CSS custom properties** (design tokens) declared 
 | Symptom | Fix |
 |---|---|
 | `500` — API key error | Verify `GEMINI_API_KEY` is set in `backend/.env` |
-| `500` — model error | Set `GEMINI_MODEL` to a valid Gemini model (e.g. `gemini-2.0-flash`) |
+| `500` — model error | Set `GEMINI_MODEL` to a valid model available to your key (recommended: `gemini-2.5-flash`) |
+| `429` — quota exceeded | This is a billing/quota limit, not a bad model name. Enable billing or wait for quota reset in Google AI Studio/Cloud project. |
 | CORS or network error | Ensure backend is running; check `REACT_APP_API_BASE_URL` matches backend host/port |
 | Frontend can't reach backend | Confirm backend is listening on `PORT`; confirm no firewall blocking |
 | Blank page after Docker run | Make sure `REACT_APP_API_BASE_URL` was passed as `--build-arg` at image build time |

@@ -8,7 +8,38 @@ app.use(cors());
 app.use(express.json());
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const MODEL_FALLBACKS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+
+function buildModelCandidates() {
+  const seen = new Set();
+  return [GEMINI_MODEL, ...MODEL_FALLBACKS].filter((modelName) => {
+    if (!modelName || seen.has(modelName)) return false;
+    seen.add(modelName);
+    return true;
+  });
+}
+
+async function generateWithModelFallback(prompt) {
+  const attempted = [];
+
+  for (const modelName of buildModelCandidates()) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      return {
+        text: result.response.text(),
+        modelUsed: modelName,
+      };
+    } catch (err) {
+      attempted.push({ modelName, message: err?.message || String(err) });
+    }
+  }
+
+  const error = new Error("Gemini generation failed for all candidate models.");
+  error.attempted = attempted;
+  throw error;
+}
 
 // ─── Prompt Builder ───────────────────────────────────────────────────────────
 
@@ -135,17 +166,20 @@ app.post("/generate", async (req, res) => {
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
     const prompt = buildPrompt({ query, mode, scale, userArchitecture });
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const { text, modelUsed } = await generateWithModelFallback(prompt);
 
-    res.json({ result: text });
+    res.json({ result: text, modelUsed });
   } catch (err) {
-    console.error(`Gemini API error using model ${GEMINI_MODEL}:`, err.message);
+    const attempted = Array.isArray(err.attempted) ? err.attempted : [];
+    console.error("Gemini API error:", attempted.length > 0 ? attempted : err.message);
     res.status(500).json({
-      error: `Failed to generate response with model ${GEMINI_MODEL}. Set GEMINI_MODEL to a supported Gemini model and try again.`,
+      error: "Failed to generate response with available Gemini models.",
+      details:
+        attempted.length > 0
+          ? attempted
+          : [{ modelName: GEMINI_MODEL, message: err?.message || String(err) }],
     });
   }
 });
