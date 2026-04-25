@@ -18,6 +18,10 @@
 
 ---
 
+## 🌟 Unique Solution Implemented
+
+- Built a multi-mode, scale-aware engineering mentor that not only answers architecture questions, but also critiques a user’s own architecture and returns structured Staff-level guidance (trade-offs, failure modes, redesign path) in a consistent output format.
+
 ## ✨ Features
 
 | Feature | Description |
